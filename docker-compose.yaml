@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  shadowsocks:
+    image: shadowsocks/shadowsocks-libev:latest
+    container_name: shadowsocks
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - TZ=${TZ}
+      - PASSWORD=${PASSWORD}
+      - METHOD=aes-256-gcm
+      - ARGS=--fast-open
+      - SERVER_ADDR=10.3.0.2
+      - DNS_ADDRS=8.8.8.8
+    ports:
+      - "8388:8388"
+      - "8388:8388/udp"
+    volumes:
+      - ./shadowsock:/etc/shadowsocks-libev
+    restart: unless-stopped
+    networks:
+      vpn:
+        ipv4_address: 10.3.0.2
+
+  zabbix-server:
+    image: zabbix/zabbix-server-mysql:latest
+    container_name: zabbix-server
+    ports:
+      - 10051:10051
+    environment:
+      - DB_SERVER_HOST=mysql
+      - MYSQL_USER=zabbix
+      - MYSQL_PASSWORD=zabbix
+      - MYSQL_DATABASE=zabbix
+    restart: unless-stopped
+    depends_on:
+      - mysql
+    networks:
+      vpn:
+        ipv4_address: 10.3.0.3
+
+  zabbix-web-nginx-mysql:
+    image: zabbix/zabbix-web-nginx-mysql:latest
+    container_name: zabbix-web
+    #    ports:
+    #      - 80:8080
+    #    volumes:
+      #      - ./zabbix-nginx/nginx.conf:/etc/nginx/conf.d/zabbix-web-nginx.conf
+    environment:
+      - DB_SERVER_HOST=mysql
+      - MYSQL_USER=zabbix
+      - MYSQL_PASSWORD=zabbix
+      - MYSQL_DATABASE=zabbix
+      - ZBX_SERVER_HOST=zabbix-server
+    depends_on:
+      - mysql
+      - zabbix-server
+    restart: unless-stopped
+    networks:
+      vpn:
+        ipv4_address: 10.3.0.4
+
+  mysql:
+    image: mariadb:10.6
+    container_name: mysql
+    environment:
+      - MYSQL_USER=zabbix
+      - MYSQL_PASSWORD=zabbix
+      - MYSQL_DATABASE=zabbix
+      - MYSQL_ROOT_PASSWORD=zabbix
+    volumes:
+      - ./mysql/data:/var/lib/mysql
+    restart: unless-stopped
+    networks:
+      vpn:
+        ipv4_address: 10.3.0.5
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: zabbix-grafana
+    environment:
+      - TZ=${TZ}
+      - GF_INSTALL_PLUGINS=alexanderzobnin-zabbix-app,grafana-clock-panel,grafana-simple-json-datasource
+        #      - ./grafana/data/grafana.ini:/etc/grafana/grafana.ini
+        #      #      - GF_PATHS_CONFIG=/etc/grafana/grafana.ini
+        #      - GF_PATHS_DATA=/etc/grafana/data
+        #      - GF_PATHS_HOME=/etc/grafana/home
+        #      - GF_PATHS_LOGS=/etc/grafana/logs
+        #      - GF_PATHS_PLUGINS=/etc/grafana/plugins
+        #      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+        #        #      - GF_SERVER_ROOT_URL=http://10.3.0.6
+
+#    ports:
+#      - 3000:3000
+    volumes:
+      - ./grafana/data:/var/lib/grafana
+      - ./grafana/plugins:/var/lib/grafana/plugins
+    restart: unless-stopped
+    user: '472'
+    networks:
+      vpn:
+        ipv4_address: 10.3.0.6
+
+networks:
+  vpn:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.3.0.0/24
+          gateway: 10.3.0.1
